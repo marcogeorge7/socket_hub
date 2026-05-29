@@ -91,3 +91,55 @@ describe('emitToChannel delivery', () => {
     expect(emitToChannel('nope', 'chat.1', 'message', {}).ok).toBe(false);
   });
 });
+
+describe('whisper relay', () => {
+  it('relays a client- event to other members but not the sender', async () => {
+    const a = await connect(['chat.*']);
+    const b = await connect(['chat.*']);
+    try {
+      for (const c of [a, b]) {
+        await new Promise<void>((resolve) =>
+          c.emit('subscribe', 'chat.1', () => resolve()),
+        );
+      }
+
+      let senderGot = false;
+      a.on('client-typing', () => (senderGot = true));
+      const received = new Promise<unknown>((resolve) => b.on('client-typing', resolve));
+
+      a.emit('whisper', { channel: 'chat.1', event: 'client-typing', data: { typing: true } });
+
+      await expect(received).resolves.toEqual({ typing: true });
+      await new Promise((r) => setTimeout(r, 100));
+      expect(senderGot).toBe(false);
+    } finally {
+      a.disconnect();
+      b.disconnect();
+    }
+  });
+
+  it('rejects a whisper to a channel the client did not subscribe to', async () => {
+    const client = await connect(['chat.*']);
+    try {
+      const res = await new Promise<{ ok: boolean }>((resolve) => {
+        client.emit('whisper', { channel: 'chat.5', event: 'client-typing', data: {} }, resolve);
+      });
+      expect(res.ok).toBe(false);
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  it('rejects a whisper whose event is not client- prefixed', async () => {
+    const client = await connect(['chat.*']);
+    try {
+      await new Promise<void>((resolve) => client.emit('subscribe', 'chat.1', () => resolve()));
+      const res = await new Promise<{ ok: boolean }>((resolve) => {
+        client.emit('whisper', { channel: 'chat.1', event: 'message.sent', data: {} }, resolve);
+      });
+      expect(res.ok).toBe(false);
+    } finally {
+      client.disconnect();
+    }
+  });
+});
