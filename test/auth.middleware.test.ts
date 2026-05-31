@@ -31,7 +31,12 @@ describe('auth middleware', () => {
     });
     const err = await run(socket);
     expect(err).toBeUndefined();
-    expect(socket.data.user).toEqual({ project: 'cupet', userId: 'u1', channels: ['chat.*'] });
+    expect(socket.data.user).toEqual({
+      project: 'cupet',
+      userId: 'u1',
+      channels: ['chat.*'],
+      iat: expect.any(Number),
+    });
   });
 
   it('accepts a token from the Authorization header', async () => {

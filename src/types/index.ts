@@ -37,6 +37,11 @@ export interface SocketUser {
   project: string;
   userId: string;
   channels: string[];
+  /**
+   * JWT issued-at (seconds). Used to enforce one-device-per-account with a
+   * deterministic newest-login-wins tie-break (see presence.ts).
+   */
+  iat?: number;
 }
 
 /** Payload accepted by the HTTP trigger API and the Redis publish path. */

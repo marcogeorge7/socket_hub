@@ -29,8 +29,8 @@ afterAll(async () => {
   await new Promise<void>((resolve) => httpServer.close(() => resolve()));
 });
 
-function connect(channels: string[]): Promise<ClientSocket> {
-  const token = jwt.sign({ project: 'cupet', userId: 'u1', channels }, 'test-cupet-jwt');
+function connect(channels: string[], userId = 'u1'): Promise<ClientSocket> {
+  const token = jwt.sign({ project: 'cupet', userId, channels }, 'test-cupet-jwt');
   const client = ioClient(`http://localhost:${port}/cupet`, {
     auth: { token },
     transports: ['websocket'],
@@ -94,8 +94,11 @@ describe('emitToChannel delivery', () => {
 
 describe('whisper relay', () => {
   it('relays a client- event to other members but not the sender', async () => {
-    const a = await connect(['chat.*']);
-    const b = await connect(['chat.*']);
+    // Two distinct accounts in the same channel — one-device-per-account means
+    // a single user can't hold two live sockets, so whisper is modelled here as
+    // the two chat participants it actually serves.
+    const a = await connect(['chat.*'], 'u1');
+    const b = await connect(['chat.*'], 'u2');
     try {
       for (const c of [a, b]) {
         await new Promise<void>((resolve) =>
@@ -140,6 +143,40 @@ describe('whisper relay', () => {
       expect(res.ok).toBe(false);
     } finally {
       client.disconnect();
+    }
+  });
+});
+
+describe('single session (one device per account)', () => {
+  it('evicts and notifies the previous socket when the same user reconnects', async () => {
+    const first = await connect(['chat.*'], 'solo');
+    const revoked = new Promise<{ reason: string }>((resolve) =>
+      first.on('session.revoked', resolve),
+    );
+    const disconnected = new Promise<void>((resolve) => first.on('disconnect', () => resolve()));
+
+    const second = await connect(['chat.*'], 'solo');
+    try {
+      await expect(revoked).resolves.toMatchObject({ reason: 'signed_in_elsewhere' });
+      await disconnected;
+      expect(first.connected).toBe(false);
+      expect(second.connected).toBe(true);
+    } finally {
+      first.disconnect();
+      second.disconnect();
+    }
+  });
+
+  it('leaves a different user\'s socket connected', async () => {
+    const mine = await connect(['chat.*'], 'keep-a');
+    const theirs = await connect(['chat.*'], 'keep-b');
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      expect(mine.connected).toBe(true);
+      expect(theirs.connected).toBe(true);
+    } finally {
+      mine.disconnect();
+      theirs.disconnect();
     }
   });
 });
