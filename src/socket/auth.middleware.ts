@@ -34,6 +34,7 @@ export function createAuthMiddleware(project: ProjectConfig) {
         userId: payload.userId,
         channels: payload.channels ?? [],
         iat: payload.iat,
+        sessionId: payload.sid,
       };
 
       logger.debug(

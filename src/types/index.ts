@@ -27,6 +27,12 @@ export interface JwtPayload {
    * subscribe to public channels (those prefixed with "public.").
    */
   channels?: string[];
+  /**
+   * Stable per-login session id (the backend's Sanctum token id). Lets the
+   * presence sweep recognise the SAME device reconnecting vs a genuine new
+   * login on another device. See presence.ts.
+   */
+  sid?: string;
   /** Standard JWT claims (added by jsonwebtoken). */
   iat?: number;
   exp?: number;
@@ -42,6 +48,8 @@ export interface SocketUser {
    * deterministic newest-login-wins tie-break (see presence.ts).
    */
   iat?: number;
+  /** Stable per-login session id from the JWT `sid` claim (see presence.ts). */
+  sessionId?: string;
 }
 
 /** Payload accepted by the HTTP trigger API and the Redis publish path. */

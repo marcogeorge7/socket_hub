@@ -19,6 +19,11 @@ export function presenceRoom(userId: string): string {
  * adapter is attached, and the local process otherwise. Any failure is logged
  * and swallowed so a presence hiccup can never reject a legitimate connection.
  *
+ * Same-device reconnects (socket-token refresh, network reconnect, app resume)
+ * carry the SAME `sid` (session id) as the prior socket; these are dropped
+ * quietly — never with `session.revoked`, which would log the device out of
+ * itself after the JWT cycles. Only a genuinely different session is evicted.
+ *
  * Tie-break: we only evict peers whose JWT `iat` is no newer than this socket's,
  * so two near-simultaneous connects converge on the latest session rather than
  * ping-ponging. The backend revokes the old bearer on login, so in the real
@@ -36,7 +41,18 @@ export async function enforceSingleSession(
     const peers = await nsp.in(room).fetchSockets();
     for (const peer of peers) {
       if (peer.id === socket.id) continue;
-      const peerIat = (peer.data?.user as SocketUser | undefined)?.iat ?? 0;
+      const peerUser = peer.data?.user as SocketUser | undefined;
+
+      // Same login reconnecting (socket-token refresh, auto-reconnect, app
+      // resume) — identified by a matching session id, it's the SAME device.
+      // Drop the stale socket quietly; emitting session.revoked here would force
+      // a spurious logout on the very device that just reconnected.
+      if (user.sessionId && peerUser?.sessionId === user.sessionId) {
+        peer.disconnect(true);
+        continue;
+      }
+
+      const peerIat = peerUser?.iat ?? 0;
       if (peerIat > newIat) continue; // a strictly-newer session exists; leave it
       peer.emit('session.revoked', { reason: 'signed_in_elsewhere' });
       peer.disconnect(true);
